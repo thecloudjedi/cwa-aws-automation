@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "CloudFormation Template to deploy CloudWatch Events"
+
+Parameters: 
+  IAMARN: 
+    Type: String
+    Description: ARN of the IAM Role
+
+Mappings: 
+  RegionMap: 
+    us-east-1: 
+      "cron": "cron(0 11 ? * 1 *)"
+    us-east-2: 
+      "cron": "cron(0 11 ? * 1 *)"
+    ca-central-1: 
+      "cron": "cron(0 11 ? * 1 *)"
+    us-west-1: 
+      "cron": "cron(0 13 ? * 1 *)"
+    us-west-2: 
+      "cron": "cron(0 13 ? * 1 *)"
+    eu-west-1: 
+      "cron": "cron(0 6 ? * 1 *)"
+    eu-west-2: 
+      "cron": "cron(0 6 ? * 1 *)"
+    eu-central-1: 
+      "cron": "cron(0 5 ? * 1 *)"
+    ap-southeast-1: 
+      "cron": "cron(0 23 ? * 7 *)"
+    ap-southeast-2: 
+      "cron": "cron(0 21 ? * 7 *)"
+    ap-northeast-1: 
+      "cron": "cron(0 12 ? * 7 *)"
+    ap-south-1: 
+      "cron": "cron(30 1 ? * 1 *)"
+    sa-east-1: 
+      "cron": "cron(0 11 ? * 1 *)"
+
+Resources:
+
+  automateupdatedocument:
+    Type: "AWS::SSM::Document"
+    Properties:
+      DocumentType: Command
+      Content:
+        schemaVersion: '2.2'
+        description: Install Latest Automate Patch for Automate Saas
+        mainSteps:
+        - action: aws:runPowerShellScript
+          name: updateautomate
+          precondition:
+            StringEquals:
+            - platformType
+            - Windows
+          inputs:
+            timeoutSeconds: 7200
+            runCommand:
+            - |
+              set-defaultawsregion us-east-1
+              copy-s3object -BucketName <redacted> -Key master/ps-scheduler/update-automate-to-latest.ps1 -LocalFile 'C:/windows/temp/update-automate-to-latest.ps1'
+              set-location 'C:/windows/temp'
+              $runscript = C:/windows/temp/update-automate-to-latest.ps1
+              write-output $runscript
+              
+      Tags:
+      - Key: name
+        Value: AutomateUpdate
+
+
+
+  MyEventName:
+      Type: AWS::Events::Rule
+      Properties:
+        Description: Windows Update Scheduler
+        Name: CWA-Install-Windows-Updates
+        ScheduleExpression: !FindInMap [RegionMap, !Ref "AWS::Region", cron]
+        State: ENABLED
+        Targets: 
+          - Arn: !Sub 'arn:aws:ssm:${AWS::Region}:<redacted>:document/${automateupdatedocument}'
+            Id: windows_update_execution
+            RunCommandParameters:
+              RunCommandTargets:
+                - Key: tag:class
+                  Values: 
+                  - "saas"
+            RoleArn: !Sub "${IAMARN}"
+
+
+
+
+
+Outputs:
+    ssmId:
+      Description: SSM Document ID
+      Value: !Ref automateupdatedocument
+      Export:
+        Name: !Sub "${AWS::StackName}-update-automate-to-latest"
